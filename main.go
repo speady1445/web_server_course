@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func main() {
@@ -105,9 +106,9 @@ func handlerChirpValidate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type returnVals struct {
-		Valid bool `json:"valid"`
+		CleanedBody string `json:"cleaned_body"`
 	}
-	returnVal, _ := json.Marshal(returnVals{Valid: true})
+	returnVal, _ := json.Marshal(returnVals{CleanedBody: cleanedBody(params.Body)})
 	respondWith(w, http.StatusOK, returnVal)
 }
 
@@ -115,4 +116,20 @@ func respondWith(w http.ResponseWriter, status int, body []byte) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(body)
+}
+
+func cleanedBody(text string) string {
+	bannedWords := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	}
+
+	words := strings.Split(text, " ")
+	for i, word := range words {
+		if _, ok := bannedWords[strings.ToLower(word)]; ok {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
 }
