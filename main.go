@@ -4,20 +4,41 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
+	"os"
+
+	"github.com/speady1445/web_server_course/internals/database"
 )
+
+const (
+	dbPath = "database.json"
+)
+
+type apiConfig struct {
+	db             *database.DB
+	fileserverHits int
+}
 
 func main() {
 	const port = "8080"
 
-	apiCfg := apiConfig{fileserverHits: 0}
+	db, err := database.NewDB(dbPath)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	apiCfg := apiConfig{
+		db:             db,
+		fileserverHits: 0,
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/app/*", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
 	mux.HandleFunc("GET /api/reset", apiCfg.handlerReset)
 	mux.HandleFunc("GET /api/healthz", healthz)
-	mux.HandleFunc("POST /api/validate_chirp", handlerChirpValidate)
+	mux.HandleFunc("POST /api/chirps", apiCfg.handlerAddChirp)
+	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 	corsMux := middlewareCors(mux)
 
 	server := http.Server{
@@ -46,10 +67,6 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
-}
-
-type apiConfig struct {
-	fileserverHits int
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -81,55 +98,21 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, _ *http.Request) {
 	`, cfg.fileserverHits)))
 }
 
-func handlerChirpValidate(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		Body string `json:"body"`
-	}
-	type returnError struct {
+func respondWithError(w http.ResponseWriter, status int, errMsg string) {
+	type errorResponse struct {
 		Error string `json:"error"`
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-
-	if err != nil {
-		returnVal, _ := json.Marshal(returnError{Error: "Invalid input"})
-		respondWith(w, http.StatusBadRequest, returnVal)
-		return
-	}
-
-	if len(params.Body) > 140 {
-		returnVal, _ := json.Marshal(returnError{Error: "Chirp is too long"})
-		respondWith(w, http.StatusBadRequest, returnVal)
-		return
-	}
-
-	type returnVals struct {
-		CleanedBody string `json:"cleaned_body"`
-	}
-	returnVal, _ := json.Marshal(returnVals{CleanedBody: cleanedBody(params.Body)})
-	respondWith(w, http.StatusOK, returnVal)
+	respondWith(w, status, errorResponse{Error: errMsg})
 }
 
-func respondWith(w http.ResponseWriter, status int, body []byte) {
+func respondWith(w http.ResponseWriter, status int, content interface{}) {
 	w.Header().Set("Content-Type", "application/json")
+	returnErr, err := json.Marshal(content)
+	if err != nil {
+		fmt.Println("Error marshalling JSON:", err)
+		w.WriteHeader(500)
+	}
 	w.WriteHeader(status)
-	w.Write(body)
-}
-
-func cleanedBody(text string) string {
-	bannedWords := map[string]struct{}{
-		"kerfuffle": {},
-		"sharbert":  {},
-		"fornax":    {},
-	}
-
-	words := strings.Split(text, " ")
-	for i, word := range words {
-		if _, ok := bannedWords[strings.ToLower(word)]; ok {
-			words[i] = "****"
-		}
-	}
-	return strings.Join(words, " ")
+	w.Write(returnErr)
 }
