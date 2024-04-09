@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -73,4 +74,21 @@ func (c *apiConfig) handlerGetChirps(w http.ResponseWriter, _ *http.Request) {
 	})
 
 	respondWith(w, http.StatusOK, chirps)
+}
+
+func (c *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("chirpid")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid chirp id.")
+		return
+	}
+
+	dbChirp, err := c.db.GetChirp(id)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Chirp not found")
+		return
+	}
+
+	respondWith(w, http.StatusOK, chirp{ID: dbChirp.Id, Body: dbChirp.Body})
 }
