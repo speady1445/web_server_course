@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,6 +21,12 @@ type apiConfig struct {
 
 func main() {
 	const port = "8080"
+
+	err := debug()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 
 	db, err := database.NewDB(dbPath)
 	if err != nil {
@@ -50,6 +57,18 @@ func main() {
 
 	fmt.Println("Listening on port " + port)
 	server.ListenAndServe()
+}
+
+func debug() error {
+	dbg := flag.Bool("debug", false, "Enable debug mode")
+	flag.Parse()
+
+	if *dbg {
+		err := os.Remove(dbPath)
+		return err
+	}
+
+	return nil
 }
 
 func middlewareCors(next http.Handler) http.Handler {
