@@ -7,14 +7,19 @@ import (
 	"sync"
 )
 
+var (
+	ErrAlreadyExists = errors.New("already exists")
+)
+
 type Chirp struct {
 	Id   int    `json:"id"`
 	Body string `json:"body"`
 }
 
 type User struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
+	ID             int    `json:"id"`
+	Email          string `json:"email"`
+	HashedPassword string `json:"password"`
 }
 
 type DB struct {
@@ -23,8 +28,8 @@ type DB struct {
 }
 
 type DBStructure struct {
-	Chirps map[int]Chirp `json:"chirps"`
-	Users  map[int]User  `json:"users"`
+	Chirps map[int]Chirp   `json:"chirps"`
+	Users  map[string]User `json:"users"`
 }
 
 // NewDB creates a new database connection
@@ -38,7 +43,7 @@ func NewDB(path string) (*DB, error) {
 	return db, nil
 }
 
-func (db *DB) CreateUser(email string) (User, error) {
+func (db *DB) CreateUser(email string, password string) (User, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
@@ -47,16 +52,38 @@ func (db *DB) CreateUser(email string) (User, error) {
 		return User{}, err
 	}
 
-	id := len(data.Users) + 1
-	user := User{
-		Id:    id,
-		Email: email,
+	if _, ok := data.Users[email]; ok {
+		return User{}, ErrAlreadyExists
 	}
 
-	data.Users[id] = user
+	id := len(data.Users) + 1
+	user := User{
+		ID:             id,
+		Email:          email,
+		HashedPassword: password,
+	}
+
+	data.Users[email] = user
 	err = db.writeDB(data)
 	if err != nil {
 		return User{}, err
+	}
+
+	return user, nil
+}
+
+func (db *DB) GetUser(email string) (User, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+	user, ok := dbStructure.Users[email]
+	if !ok {
+		return User{}, errors.New("user not found")
 	}
 
 	return user, nil
@@ -131,7 +158,7 @@ func (db *DB) ensureDB() error {
 
 	emptyDB := DBStructure{
 		Chirps: map[int]Chirp{},
-		Users:  map[int]User{},
+		Users:  map[string]User{},
 	}
 	db.writeDB(emptyDB)
 	return nil
