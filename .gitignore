@@ -25,3 +25,6 @@ go.work
 
 # Our simple database
 database.json
+
+# Env variables for develompent env
+.env

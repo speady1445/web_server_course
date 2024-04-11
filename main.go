@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/speady1445/web_server_course/internals/database"
 )
 
@@ -17,10 +18,19 @@ const (
 type apiConfig struct {
 	db             *database.DB
 	fileserverHits int
+	jwtSecret      string
 }
 
 func main() {
 	const port = "8080"
+
+	godotenv.Load()
+
+	jwtSecret, found := os.LookupEnv("JWT_SECRET")
+	if !found {
+		fmt.Println("JWT_SECRET not found")
+		os.Exit(1)
+	}
 
 	err := debug()
 	if err != nil {
@@ -37,6 +47,7 @@ func main() {
 	apiCfg := apiConfig{
 		db:             db,
 		fileserverHits: 0,
+		jwtSecret:      jwtSecret,
 	}
 
 	mux := http.NewServeMux()
@@ -45,6 +56,7 @@ func main() {
 	mux.HandleFunc("GET /api/reset", apiCfg.handlerReset)
 	mux.HandleFunc("GET /api/healthz", healthz)
 	mux.HandleFunc("POST /api/users", apiCfg.handlerAddUser)
+	mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUser)
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerAddChirp)
 	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)

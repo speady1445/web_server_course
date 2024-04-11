@@ -89,6 +89,30 @@ func (db *DB) GetUser(email string) (User, error) {
 	return user, nil
 }
 
+func (db *DB) UpdateUser(id int, email, hashedPassword string) (User, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+	for dbEmail, user := range dbStructure.Users {
+		if user.ID == id {
+			user.Email = email
+			user.HashedPassword = hashedPassword
+
+			delete(dbStructure.Users, dbEmail)
+			dbStructure.Users[email] = user
+
+			return user, db.writeDB(dbStructure)
+		}
+	}
+
+	return User{}, errors.New("user not found")
+}
+
 // CreateChirp creates a new chirp and saves it to disk
 func (db *DB) CreateChirp(body string) (Chirp, error) {
 	db.mux.Lock()
