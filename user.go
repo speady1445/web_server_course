@@ -74,7 +74,7 @@ func (c *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbUser, err := c.db.GetUser(params.Email)
+	dbUser, err := c.db.GetUserByEmail(params.Email)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user")
 		return

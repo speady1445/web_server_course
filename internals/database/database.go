@@ -28,8 +28,8 @@ type DB struct {
 }
 
 type DBStructure struct {
-	Chirps map[int]Chirp   `json:"chirps"`
-	Users  map[string]User `json:"users"`
+	Chirps map[int]Chirp `json:"chirps"`
+	Users  map[int]User  `json:"users"`
 }
 
 // NewDB creates a new database connection
@@ -52,8 +52,10 @@ func (db *DB) CreateUser(email string, password string) (User, error) {
 		return User{}, err
 	}
 
-	if _, ok := data.Users[email]; ok {
-		return User{}, ErrAlreadyExists
+	for _, user := range data.Users {
+		if user.Email == email {
+			return User{}, ErrAlreadyExists
+		}
 	}
 
 	id := len(data.Users) + 1
@@ -63,7 +65,7 @@ func (db *DB) CreateUser(email string, password string) (User, error) {
 		HashedPassword: password,
 	}
 
-	data.Users[email] = user
+	data.Users[id] = user
 	err = db.writeDB(data)
 	if err != nil {
 		return User{}, err
@@ -72,7 +74,7 @@ func (db *DB) CreateUser(email string, password string) (User, error) {
 	return user, nil
 }
 
-func (db *DB) GetUser(email string) (User, error) {
+func (db *DB) GetUserByEmail(email string) (User, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
@@ -81,12 +83,13 @@ func (db *DB) GetUser(email string) (User, error) {
 		return User{}, err
 	}
 
-	user, ok := dbStructure.Users[email]
-	if !ok {
-		return User{}, errors.New("user not found")
+	for _, user := range dbStructure.Users {
+		if user.Email == email {
+			return user, nil
+		}
 	}
 
-	return user, nil
+	return User{}, errors.New("user not found")
 }
 
 func (db *DB) UpdateUser(id int, email, hashedPassword string) (User, error) {
@@ -98,13 +101,12 @@ func (db *DB) UpdateUser(id int, email, hashedPassword string) (User, error) {
 		return User{}, err
 	}
 
-	for dbEmail, user := range dbStructure.Users {
+	for dbID, user := range dbStructure.Users {
 		if user.ID == id {
 			user.Email = email
 			user.HashedPassword = hashedPassword
 
-			delete(dbStructure.Users, dbEmail)
-			dbStructure.Users[email] = user
+			dbStructure.Users[dbID] = user
 
 			return user, db.writeDB(dbStructure)
 		}
@@ -182,7 +184,7 @@ func (db *DB) ensureDB() error {
 
 	emptyDB := DBStructure{
 		Chirps: map[int]Chirp{},
-		Users:  map[string]User{},
+		Users:  map[int]User{},
 	}
 	db.writeDB(emptyDB)
 	return nil
