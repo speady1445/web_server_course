@@ -31,6 +31,7 @@ type DB struct {
 
 type DBStructure struct {
 	Chirps        map[int]Chirp           `json:"chirps"`
+	ChirpLastID   int                     `json:"chirp_last_id"`
 	Users         map[int]User            `json:"users"`
 	RevokedTokens map[string]RevokedToken `json:"revoked_tokens"`
 }
@@ -128,25 +129,40 @@ func (db *DB) CreateChirp(authorID int, body string) (Chirp, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
-	data, err := db.loadDB()
+	dbStructure, err := db.loadDB()
 	if err != nil {
 		return Chirp{}, err
 	}
 
-	id := len(data.Chirps) + 1
+	dbStructure.ChirpLastID++
+	id := dbStructure.ChirpLastID
 	chirp := Chirp{
 		Id:       id,
 		AuthorID: authorID,
 		Body:     body,
 	}
 
-	data.Chirps[id] = chirp
-	err = db.writeDB(data)
+	dbStructure.Chirps[id] = chirp
+	err = db.writeDB(dbStructure)
 	if err != nil {
 		return Chirp{}, err
 	}
 
 	return chirp, nil
+}
+
+func (db *DB) DeleteChirp(id int) error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+
+	delete(dbStructure.Chirps, id)
+
+	return db.writeDB(dbStructure)
 }
 
 // GetChirps returns all chirps in the database
@@ -193,6 +209,7 @@ func (db *DB) ensureDB() error {
 
 	emptyDB := DBStructure{
 		Chirps:        map[int]Chirp{},
+		ChirpLastID:   0,
 		Users:         map[int]User{},
 		RevokedTokens: map[string]RevokedToken{},
 	}

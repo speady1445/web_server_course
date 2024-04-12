@@ -110,3 +110,37 @@ func (c *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
 
 	respondWith(w, http.StatusOK, dbChirpToResponseChirp(dbChirp))
 }
+
+func (c *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("chirpid")
+	inputID, err := strconv.Atoi(idStr)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid chirp id.")
+		return
+	}
+
+	authorID, err := auth.GetUserIDFromAccessToken(c.jwtSecret, r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid access token.")
+		return
+	}
+
+	chirp, err := c.db.GetChirp(inputID)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Chirp not found.")
+		return
+	}
+
+	if authorID != chirp.AuthorID {
+		respondWithError(w, http.StatusForbidden, "You can only delete your own chirps.")
+		return
+	}
+
+	err = c.db.DeleteChirp(inputID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error deleting chirp.")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
