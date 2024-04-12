@@ -75,16 +75,28 @@ func cleanedChirpMessage(text string) string {
 	return strings.Join(words, " ")
 }
 
-func (c *apiConfig) handlerGetChirps(w http.ResponseWriter, _ *http.Request) {
+func (c *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	dbChirps, err := c.db.GetChirps()
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	authorID := -1
+	authorIDstring := r.URL.Query().Get("author_id")
+	if authorIDstring != "" {
+		authorID, err = strconv.Atoi(authorIDstring)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid author id")
+			return
+		}
+	}
+
 	chirps := make([]responseChirp, 0, len(dbChirps))
 	for _, dbChirp := range dbChirps {
-		chirps = append(chirps, dbChirpToResponseChirp(dbChirp))
+		if authorID == -1 || authorID == dbChirp.AuthorID {
+			chirps = append(chirps, dbChirpToResponseChirp(dbChirp))
+		}
 	}
 
 	slices.SortFunc(chirps, func(a, b responseChirp) int {
