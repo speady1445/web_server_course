@@ -92,6 +92,14 @@ func (c *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sortMode := r.URL.Query().Get("sort")
+	if sortMode == "" {
+		sortMode = "asc"
+	}
+	if sortMode != "asc" && sortMode != "desc" {
+		respondWithError(w, http.StatusBadRequest, "Invalid sort mode")
+	}
+
 	chirps := make([]responseChirp, 0, len(dbChirps))
 	for _, dbChirp := range dbChirps {
 		if authorID == -1 || authorID == dbChirp.AuthorID {
@@ -100,7 +108,10 @@ func (c *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slices.SortFunc(chirps, func(a, b responseChirp) int {
-		return a.ID - b.ID
+		if sortMode == "asc" {
+			return a.ID - b.ID
+		}
+		return b.ID - a.ID
 	})
 
 	respondWith(w, http.StatusOK, chirps)
