@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrAlreadyExists = errors.New("already exists")
+	ErrNotExists     = errors.New("not exists")
 )
 
 type Chirp struct {
@@ -22,6 +23,7 @@ type User struct {
 	ID             int    `json:"id"`
 	Email          string `json:"email"`
 	HashedPassword string `json:"password"`
+	IsChirpyRed    bool   `json:"is_chirpy_red"`
 }
 
 type DB struct {
@@ -72,6 +74,7 @@ func (db *DB) CreateUser(email string, password string) (User, error) {
 		ID:             id,
 		Email:          email,
 		HashedPassword: password,
+		IsChirpyRed:    false,
 	}
 
 	data.Users[id] = user
@@ -122,6 +125,26 @@ func (db *DB) UpdateUser(id int, email, hashedPassword string) (User, error) {
 	}
 
 	return User{}, errors.New("user not found")
+}
+
+func (db *DB) PaintUserRed(userID int) error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+
+	user, exists := dbStructure.Users[userID]
+	if !exists {
+		return ErrNotExists
+	}
+
+	user.IsChirpyRed = true
+	dbStructure.Users[userID] = user
+
+	return db.writeDB(dbStructure)
 }
 
 // CreateChirp creates a new chirp and saves it to disk

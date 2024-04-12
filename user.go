@@ -9,9 +9,18 @@ import (
 	"github.com/speady1445/web_server_course/internals/database"
 )
 
-type user struct {
-	ID    int    `json:"id"`
-	Email string `json:"email"`
+type responseUser struct {
+	ID          int    `json:"id"`
+	Email       string `json:"email"`
+	IsChirpyRed bool   `json:"is_chirpy_red"`
+}
+
+func dbUserToResponseUser(dbUser database.User) responseUser {
+	return responseUser{
+		ID:          dbUser.ID,
+		Email:       dbUser.Email,
+		IsChirpyRed: dbUser.IsChirpyRed,
+	}
 }
 
 func (c *apiConfig) handlerAddUser(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +54,7 @@ func (c *apiConfig) handlerAddUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWith(w, http.StatusCreated, user{ID: dbUser.ID, Email: dbUser.Email})
+	respondWith(w, http.StatusCreated, dbUserToResponseUser(dbUser))
 }
 
 func (c *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +63,7 @@ func (c *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 	}
 	type response struct {
-		user
+		responseUser
 		AccessToken  string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
 	}
@@ -93,10 +102,7 @@ func (c *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWith(w, http.StatusOK, response{
-		user: user{
-			ID:    dbUser.ID,
-			Email: dbUser.Email,
-		},
+		responseUser: dbUserToResponseUser(dbUser),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
@@ -135,7 +141,7 @@ func (c *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWith(w, http.StatusOK, user{ID: dbUser.ID, Email: dbUser.Email})
+	respondWith(w, http.StatusOK, dbUserToResponseUser(dbUser))
 }
 
 func (c *apiConfig) handlerRefreshToken(w http.ResponseWriter, r *http.Request) {
@@ -190,6 +196,40 @@ func (c *apiConfig) handlerRevokeToken(w http.ResponseWriter, r *http.Request) {
 	err = c.db.AddRevokedToken(token)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not revoke token")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (c *apiConfig) handlerPaintUserRed(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID int `json:"user_id"`
+		} `json:"data"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid input")
+		return
+	}
+
+	if params.Event != "user.upgraded" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	err = c.db.PaintUserRed(params.Data.UserID)
+	if err != nil {
+		if errors.Is(err, database.ErrNotExists) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Could not update user")
 		return
 	}
 
