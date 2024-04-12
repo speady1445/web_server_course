@@ -210,6 +210,12 @@ func (c *apiConfig) handlerPaintUserRed(w http.ResponseWriter, r *http.Request) 
 		} `json:"data"`
 	}
 
+	authApiKey := r.Header.Get("Authorization")
+	if authApiKey != "ApiKey "+c.polkaApiKey {
+		respondWithError(w, http.StatusUnauthorized, "Invalid API key")
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 	err := decoder.Decode(&params)

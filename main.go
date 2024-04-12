@@ -19,6 +19,7 @@ type apiConfig struct {
 	db             *database.DB
 	fileserverHits int
 	jwtSecret      string
+	polkaApiKey    string
 }
 
 func main() {
@@ -29,6 +30,12 @@ func main() {
 	jwtSecret, found := os.LookupEnv("JWT_SECRET")
 	if !found {
 		fmt.Println("JWT_SECRET not found")
+		os.Exit(1)
+	}
+
+	polkaApiKey, found := os.LookupEnv("POLKA_API_KEY")
+	if !found {
+		fmt.Println("POLKA_API_KEY not found")
 		os.Exit(1)
 	}
 
@@ -48,6 +55,7 @@ func main() {
 		db:             db,
 		fileserverHits: 0,
 		jwtSecret:      jwtSecret,
+		polkaApiKey:    polkaApiKey,
 	}
 
 	mux := http.NewServeMux()
