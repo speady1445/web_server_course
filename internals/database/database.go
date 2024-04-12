@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"time"
 )
 
 var (
@@ -28,8 +29,14 @@ type DB struct {
 }
 
 type DBStructure struct {
-	Chirps map[int]Chirp `json:"chirps"`
-	Users  map[int]User  `json:"users"`
+	Chirps        map[int]Chirp           `json:"chirps"`
+	Users         map[int]User            `json:"users"`
+	RevokedTokens map[string]RevokedToken `json:"revoked_tokens"`
+}
+
+type RevokedToken struct {
+	Token     string    `json:"token"`
+	RevokedAt time.Time `json:"revoked_at"`
 }
 
 // NewDB creates a new database connection
@@ -183,11 +190,47 @@ func (db *DB) ensureDB() error {
 	}
 
 	emptyDB := DBStructure{
-		Chirps: map[int]Chirp{},
-		Users:  map[int]User{},
+		Chirps:        map[int]Chirp{},
+		Users:         map[int]User{},
+		RevokedTokens: map[string]RevokedToken{},
 	}
 	db.writeDB(emptyDB)
 	return nil
+}
+
+func (db *DB) AddRevokedToken(tokenString string) error {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+
+	token := RevokedToken{
+		Token:     tokenString,
+		RevokedAt: time.Now().UTC(),
+	}
+	dbStructure.RevokedTokens[tokenString] = token
+
+	return db.writeDB(dbStructure)
+}
+
+func (db *DB) IsTokenRevoked(tokenString string) (bool, error) {
+	db.mux.Lock()
+	defer db.mux.Unlock()
+
+	dbStructure, err := db.loadDB()
+	if err != nil {
+		return false, err
+	}
+
+	_, exists := dbStructure.RevokedTokens[tokenString]
+	if exists {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // loadDB reads the database file into memory

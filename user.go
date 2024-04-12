@@ -4,14 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/speady1445/web_server_course/internals/auth"
 	"github.com/speady1445/web_server_course/internals/database"
-)
-
-const (
-	maxExpiresInSeconds = 24 * 60 * 60
 )
 
 type user struct {
@@ -55,14 +50,13 @@ func (c *apiConfig) handlerAddUser(w http.ResponseWriter, r *http.Request) {
 
 func (c *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		ExpiresInSeconds int    `json:"expires_in_seconds"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 	type response struct {
 		user
-
-		Token string `json:"token"`
+		AccessToken  string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -86,13 +80,13 @@ func (c *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresInSeconds := params.ExpiresInSeconds
-	if expiresInSeconds > maxExpiresInSeconds || expiresInSeconds <= 0 {
-		expiresInSeconds = maxExpiresInSeconds
+	accessToken, err := auth.GetAccessToken(c.jwtSecret, dbUser.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
-	expiresIn := time.Duration(expiresInSeconds) * time.Second
 
-	token, err := auth.GetSignedToken(c.jwtSecret, dbUser.ID, expiresIn)
+	refreshToken, err := auth.GetRefreshToken(c.jwtSecret, dbUser.ID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -103,20 +97,13 @@ func (c *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 			ID:    dbUser.ID,
 			Email: dbUser.Email,
 		},
-		Token: token,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 	})
 }
 
-func (c *apiConfig) getUserID(r *http.Request) (int, error) {
-	id, err := auth.GetUserID(c.jwtSecret, r.Header)
-	if err != nil {
-		return 0, err
-	}
-	return id, nil
-}
-
 func (c *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) {
-	id, err := c.getUserID(r)
+	id, err := auth.GetUserIDFromAccessToken(c.jwtSecret, r.Header)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -149,4 +136,62 @@ func (c *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWith(w, http.StatusOK, user{ID: dbUser.ID, Email: dbUser.Email})
+}
+
+func (c *apiConfig) handlerRefreshToken(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Token string `json:"token"`
+	}
+
+	userId, err := auth.GetUserIDFromRefreshToken(c.jwtSecret, r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	refreshToken, err := auth.GetTokenFromHeaders(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	isRevoked, err := c.db.IsTokenRevoked(refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if isRevoked {
+		respondWithError(w, http.StatusUnauthorized, "Token already revoked")
+		return
+	}
+
+	newAccessToken, err := auth.GetAccessToken(c.jwtSecret, userId)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondWith(w, http.StatusOK, response{Token: newAccessToken})
+}
+
+func (c *apiConfig) handlerRevokeToken(w http.ResponseWriter, r *http.Request) {
+	_, err := auth.GetUserIDFromRefreshToken(c.jwtSecret, r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	token, err := auth.GetTokenFromHeaders(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Could not find token")
+		return
+	}
+
+	err = c.db.AddRevokedToken(token)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not revoke token")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
