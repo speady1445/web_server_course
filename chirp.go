@@ -6,24 +6,42 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/speady1445/web_server_course/internals/auth"
+	"github.com/speady1445/web_server_course/internals/database"
 )
 
-type chirp struct {
-	ID   int    `json:"id"`
-	Body string `json:"body"`
+type responseChirp struct {
+	ID       int    `json:"id"`
+	AuthorID int    `json:"author_id"`
+	Body     string `json:"body"`
+}
+
+func dbChirpToResponseChirp(dbChirp database.Chirp) responseChirp {
+	return responseChirp{
+		ID:       dbChirp.Id,
+		AuthorID: dbChirp.AuthorID,
+		Body:     dbChirp.Body,
+	}
 }
 
 func (c *apiConfig) handlerAddChirp(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Body string `json:"body"`
+		Body  string `json:"body"`
+		Token string `json:"token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 	err := decoder.Decode(&params)
-
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid input")
+		return
+	}
+
+	userID, err := auth.GetUserIDFromAccessToken(c.jwtSecret, r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
@@ -32,13 +50,13 @@ func (c *apiConfig) handlerAddChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbChirp, err := c.db.CreateChirp(cleanedChirpMessage(params.Body))
+	dbChirp, err := c.db.CreateChirp(userID, cleanedChirpMessage(params.Body))
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	respondWith(w, http.StatusCreated, chirp{ID: dbChirp.Id, Body: dbChirp.Body})
+	respondWith(w, http.StatusCreated, dbChirpToResponseChirp(dbChirp))
 }
 
 func cleanedChirpMessage(text string) string {
@@ -64,12 +82,12 @@ func (c *apiConfig) handlerGetChirps(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	chirps := make([]chirp, 0, len(dbChirps))
+	chirps := make([]responseChirp, 0, len(dbChirps))
 	for _, dbChirp := range dbChirps {
-		chirps = append(chirps, chirp{ID: dbChirp.Id, Body: dbChirp.Body})
+		chirps = append(chirps, dbChirpToResponseChirp(dbChirp))
 	}
 
-	slices.SortFunc(chirps, func(a, b chirp) int {
+	slices.SortFunc(chirps, func(a, b responseChirp) int {
 		return a.ID - b.ID
 	})
 
@@ -90,5 +108,5 @@ func (c *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWith(w, http.StatusOK, chirp{ID: dbChirp.Id, Body: dbChirp.Body})
+	respondWith(w, http.StatusOK, dbChirpToResponseChirp(dbChirp))
 }

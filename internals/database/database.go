@@ -13,8 +13,9 @@ var (
 )
 
 type Chirp struct {
-	Id   int    `json:"id"`
-	Body string `json:"body"`
+	Id       int    `json:"id"`
+	AuthorID int    `json:"author_id"`
+	Body     string `json:"body"`
 }
 
 type User struct {
@@ -123,7 +124,7 @@ func (db *DB) UpdateUser(id int, email, hashedPassword string) (User, error) {
 }
 
 // CreateChirp creates a new chirp and saves it to disk
-func (db *DB) CreateChirp(body string) (Chirp, error) {
+func (db *DB) CreateChirp(authorID int, body string) (Chirp, error) {
 	db.mux.Lock()
 	defer db.mux.Unlock()
 
@@ -134,8 +135,9 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 
 	id := len(data.Chirps) + 1
 	chirp := Chirp{
-		Id:   id,
-		Body: body,
+		Id:       id,
+		AuthorID: authorID,
+		Body:     body,
 	}
 
 	data.Chirps[id] = chirp
